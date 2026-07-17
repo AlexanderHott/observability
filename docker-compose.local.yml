@@ -1,0 +1,22 @@
+services:
+  otel-collector:
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "9464:9464"
+
+  prometheus:
+    ports:
+      - "9090:9090"
+
+  grafana:
+    ports:
+      - "3000:3000"
+
+  tempo:
+    ports:
+      - "3200:3200"
+
+  loki:
+    ports:
+      - "3100:3100"

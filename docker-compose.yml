@@ -1,0 +1,84 @@
+name: observability
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otelcol/config.yaml"]
+    environment:
+      OTEL_BEARER_TOKEN: ${OTEL_BEARER_TOKEN:?OTEL_BEARER_TOKEN is required}
+    volumes:
+      - ./config/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    expose:
+      - "4317"
+      - "4318"
+      - "9464"
+    depends_on:
+      - tempo
+      - loki
+
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    volumes:
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    expose:
+      - "9090"
+    depends_on:
+      - otel-collector
+
+  grafana:
+    image: grafana/grafana:latest
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        printf '%s' "$$GF_SECURITY_ADMIN_PASSWORD" | /usr/share/grafana/bin/grafana cli admin reset-admin-password --password-from-stdin || true
+        exec /run.sh
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    expose:
+      - "3000"
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./config/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    expose:
+      - "3200"
+
+  loki:
+    image: grafana/loki:latest
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    volumes:
+      - ./config/loki.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    expose:
+      - "3100"
+
+networks:
+  default:
+    name: observability
+
+volumes:
+  grafana-data:
+  loki-data:
+  prometheus-data:
+  tempo-data:
