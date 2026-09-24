@@ -2,7 +2,8 @@ name: observability
 
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.159.0@sha256:1f2c54a30e713fac6b3ae77a1ec84010c2007e29ced8ec666214fc2f6739c1cc
+    restart: unless-stopped
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
       OTEL_BEARER_TOKEN: ${OTEL_BEARER_TOKEN:?OTEL_BEARER_TOKEN is required}
@@ -17,7 +18,8 @@ services:
       - loki
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.14.0@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0
+    restart: unless-stopped
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
@@ -32,13 +34,8 @@ services:
       - otel-collector
 
   grafana:
-    image: grafana/grafana:latest
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        printf '%s' "$$GF_SECURITY_ADMIN_PASSWORD" | /usr/share/grafana/bin/grafana cli admin reset-admin-password --password-from-stdin || true
-        exec /run.sh
+    image: grafana/grafana:13.2.0@sha256:3fd54ae1214669f8355f065ec9f6445d5279a3d77095ab048ca045685272429b
+    restart: unless-stopped
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_AUTH_DISABLE_LOGIN_FORM: "false"
@@ -56,7 +53,9 @@ services:
       - loki
 
   tempo:
-    image: grafana/tempo:latest
+    # Preserve the deployed build; its digest differs from the 3.0.0 release.
+    image: grafana/tempo:latest@sha256:1ce31d6d7ffab62189685e8c47881d4a561c5d38bd0dbd66e40ca83cef07923d
+    restart: unless-stopped
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./config/tempo.yaml:/etc/tempo.yaml:ro
@@ -65,7 +64,8 @@ services:
       - "3200"
 
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:3.7.6@sha256:efd47c67f9bac88ca29bcf8cb997d9ab29d1848bd0aff579282295542a745952
+    restart: unless-stopped
     command: ["-config.file=/etc/loki/local-config.yaml"]
     volumes:
       - ./config/loki.yaml:/etc/loki/local-config.yaml:ro
