@@ -34,11 +34,29 @@ If the file is missing or stale, save the Environment settings and redeploy, the
 
 All five services use `restart: unless-stopped` to recover after process exits or Docker restarts. An intentionally stopped container stays stopped until started manually. Check the actual containers and Grafana's `/api/health` endpoint after deployment; Dokploy's last successful deployment status alone does not show runtime health.
 
+### Fail deployments on startup errors
+
+In Dokploy, set **Advanced → Command** to the full Compose command below for this deployment. Dokploy prefixes it with `docker`, so do not include that word:
+
+```text
+compose -p observability-compose-puthfp --env-file .env -f ./docker-compose.yml up -d --build --remove-orphans --wait --wait-timeout 120
+```
+
+This preserves the current project name, environment file, and Compose path. For another deployment, copy its default command and append `--wait --wait-timeout 120`. This setting lives in Dokploy and is not applied by merging this repository.
+
+[Compose `--wait`](https://docs.docker.com/reference/cli/docker/compose/up/) waits for services to be running, or healthy when they have Docker healthchecks. [Dokploy accepts a complete custom command](https://docs.dokploy.com/docs/core/docker-compose) and propagates its failure. A failed startup should fail the deployment; keeping containers running with `restart: unless-stopped` is a separate recovery policy. A failed deployment does not automatically restore the previous images.
+
+These upstream images do not all provide Docker healthchecks, so `--wait` alone is a startup check, not proof of readiness or protection against a crash after the check finishes. The collector exposes its health extension at `http://otel-collector:13133/` on the internal network. Do not publish it through Traefik. The official collector image has no shell or `curl`, so an in-container `curl` healthcheck would itself fail. Use an external readiness probe for runtime monitoring; CI probes the collector and all four backends over HTTP after startup.
+
 ### Image updates
 
-Images are pinned to the multi-platform digests deployed on 2026-09-24. Four also use matching release tags. Tempo retains `latest` with an immutable digest because the deployed build reports `3.0.0` but differs from the published `3.0.0` release; switching it to a release image requires separate compatibility validation.
+The deployment targets `linux/arm64`, matching the Dokploy host. Every service declares that platform. The collector uses an explicit `-arm64` release tag and matching ARM64 digest. Other services use multi-platform digests containing ARM64 builds. Tempo retains `latest` with an immutable digest because the deployed build reports `3.0.0` but differs from the published `3.0.0` release; switching it to a release image requires separate compatibility validation.
 
-Dependabot checks Docker Compose images weekly and opens update PRs, with at most five open at once. Review and merge those PRs before deploying; digest changes also require review. Dokploy deploys merged changes automatically only when auto-deploy is enabled.
+Dependabot checks Docker Compose images weekly and opens update PRs, with at most five open at once. Keep the collector's `-arm64` suffix: Dependabot's Docker tag comparison preserves alphabetic variants. An unsuffixed tag previously updated to `-386`, which its version parser can treat as a numeric version component. Dependabot does not expose a global architecture allowlist; do not add unsupported version-glob rules to simulate one.
+
+The **ARM64 images and startup** CI job runs natively on ARM64. It checks the collector tag, pulls every pinned image, verifies each image's actual platform, starts the stack, checks all five readiness endpoints and OTLP authentication, and rejects container restarts. It uses disposable volumes and test credentials; it does not validate migrations against production data. Make this check required in the GitHub ruleset for `main` so incompatible updates cannot be merged. Adding the workflow does not itself change branch protection. Dependabot also updates the CI action pins.
+
+Review and merge update PRs before deploying; digest changes also require review. Dokploy deploys merged changes automatically only when auto-deploy is enabled.
 
 ### Grafana admin password
 
@@ -79,5 +97,6 @@ The local services are available at:
 - Loki: http://localhost:3100
 - OTLP/gRPC: http://localhost:4317
 - OTLP/HTTP: http://localhost:4318
+- Collector health: http://localhost:13133/, bound to loopback only
 
 Local OTLP/HTTP requests still require the bearer token. Local OTLP/gRPC on port `4317` does not require it.

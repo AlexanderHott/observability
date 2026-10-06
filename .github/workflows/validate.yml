@@ -1,0 +1,76 @@
+name: Validate observability
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  arm64:
+    name: ARM64 images and startup
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    env:
+      COMPOSE_FILE: docker-compose.yml:docker-compose.local.yml
+      COMPOSE_PROJECT_NAME: observability-ci
+      GRAFANA_ADMIN_USER: admin
+      GRAFANA_ADMIN_PASSWORD: ci-only-grafana-password
+      OTEL_BEARER_TOKEN: ci-only-collector-token
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate Compose and image architectures
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          docker compose config --quiet
+          docker compose config --format json > /tmp/compose.json
+          jq -e 'all(.services[]; .platform == "linux/arm64")' /tmp/compose.json
+          jq -e '.services["otel-collector"].image | test(":[0-9]+\\.[0-9]+\\.[0-9]+-arm64@sha256:[a-f0-9]{64}$")' /tmp/compose.json
+          docker compose pull
+          while IFS= read -r image; do
+            actual=$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")
+            if [ "$actual" != linux/arm64 ]; then
+              echo "::error::$image resolves to $actual, expected linux/arm64"
+              exit 1
+            fi
+          done < <(docker compose config --images)
+      - name: Start the stack
+        run: docker compose up -d --wait --wait-timeout 120
+      - name: Check service readiness and OTLP authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          for endpoint in \
+            http://localhost:13133/ \
+            http://localhost:9090/-/ready \
+            http://localhost:3000/api/health \
+            http://localhost:3200/ready \
+            http://localhost:3100/ready; do
+            echo "Checking $endpoint"
+            curl --fail --silent --show-error --retry 24 --retry-all-errors \
+              --retry-delay 5 --retry-max-time 120 --max-time 5 "$endpoint"
+          done
+          status=$(curl --silent --show-error --max-time 10 --output /dev/null \
+            --write-out '%{http_code}' --header 'Content-Type: application/json' \
+            --data '{}' http://localhost:4318/v1/metrics)
+          test "$status" = 401
+          curl --fail --silent --show-error --max-time 10 \
+            --header "Authorization: Bearer $OTEL_BEARER_TOKEN" \
+            --header 'Content-Type: application/json' --data '{}' \
+            http://localhost:4318/v1/metrics
+          docker inspect $(docker compose ps --all --quiet) | \
+            jq -e 'length == 5 and all(.[]; .State.Running and (.RestartCount == 0))'
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          docker compose ps --all
+          docker compose logs --no-color --tail 100
+      - name: Remove test containers and volumes
+        if: always()
+        run: docker compose down --volumes --remove-orphans

@@ -2,7 +2,9 @@ name: observability
 
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.161.0-386@sha256:76fd04f2d75922e93e447381bafcd0b78d24f1c5cdcc13f424d9a16f0342c087
+    # Keep the arm64 tag suffix: Dependabot matches updates within this variant.
+    image: otel/opentelemetry-collector-contrib:0.161.0-arm64@sha256:d497a11a3088097e4054ffbfd4b4f5244a8c036dc77c96cf2f14f86113ee9b86
+    platform: linux/arm64
     restart: unless-stopped
     command: ["--config=/etc/otelcol/config.yaml"]
     environment:
@@ -13,12 +15,14 @@ services:
       - "4317"
       - "4318"
       - "9464"
+      - "13133"
     depends_on:
       - tempo
       - loki
 
   prometheus:
     image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    platform: linux/arm64
     restart: unless-stopped
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -35,6 +39,7 @@ services:
 
   grafana:
     image: grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
+    platform: linux/arm64
     restart: unless-stopped
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "false"
@@ -55,6 +60,7 @@ services:
   tempo:
     # Preserve the deployed build; its digest differs from the 3.0.0 release.
     image: grafana/tempo:latest@sha256:1ce31d6d7ffab62189685e8c47881d4a561c5d38bd0dbd66e40ca83cef07923d
+    platform: linux/arm64
     restart: unless-stopped
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
@@ -65,6 +71,7 @@ services:
 
   loki:
     image: grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
+    platform: linux/arm64
     restart: unless-stopped
     command: ["-config.file=/etc/loki/local-config.yaml"]
     volumes:
