@@ -2,6 +2,14 @@ version: 2
 updates:
   - package-ecosystem: "docker-compose"
     directory: "/"
+    # Docker updates preserve alphabetic tag variants. Keep the collector's
+    # -arm64 suffix in Compose; -386 can be parsed as a numeric version part.
+    # Dependabot has no global architecture allowlist. ARM64 CI verifies every
+    # pinned image, including the other services' multi-platform release tags.
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
