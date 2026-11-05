@@ -3,7 +3,7 @@ name: observability
 services:
   otel-collector:
     # Keep the arm64 tag suffix: Dependabot matches updates within this variant.
-    image: otel/opentelemetry-collector-contrib:0.161.0-arm64@sha256:d497a11a3088097e4054ffbfd4b4f5244a8c036dc77c96cf2f14f86113ee9b86
+    image: otel/opentelemetry-collector-contrib:0.164.0-arm64@sha256:91433e0cbe761c34e4c98714b509cd46021b84ce8cb67001d01e34cf7594e109
     platform: linux/arm64
     restart: unless-stopped
     command: ["--config=/etc/otelcol/config.yaml"]
